@@ -1,0 +1,148 @@
+DROP DATABASE IF EXISTS vk_messenger;
+CREATE DATABASE IF NOT EXISTS vk_messenger;
+
+USE vk_messenger;
+
+
+CREATE TABLE IF NOT EXISTS users(
+	id SERIAL PRIMARY KEY,
+	vk_id VARCHAR(64) AS (MD5(CONCAT(email,phone_num))) STORED,
+	vk_alias VARCHAR(64) UNIQUE,
+	email VARCHAR(128) UNIQUE NOT NULL,
+	password_hash CHAR(64) NOT NULL,
+	phone_num VARCHAR(17) UNIQUE,
+	first_name VARCHAR(128) NOT NULL,
+	last_name VARCHAR(128) NOT NULL,
+	gender ENUM("M", "F"),
+	birthday DATETIME NOT NULL,
+	is_active BOOLEAN NOT NULL DEFAULT TRUE,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	INDEX first_name_idx(first_name(10)),
+	CONSTRAINT check_phone_num CHECK (REGEXP_LIKE(phone_num, '^\\+[0-9]{1,3}-[0-9]{3}-[0-9]{3}-[0-9]{4}$'))
+);
+
+CREATE TABLE IF NOT EXISTS countries(
+	id INT UNSIGNED UNIQUE NOT NULL AUTO_INCREMENT PRIMARY KEY,
+	numeric_code CHAR(3) UNIQUE NOT NULL,
+	currency  CHAR(3) NOT NULL,
+	country VARCHAR(128) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cities(
+	id INT UNSIGNED UNIQUE NOT NULL AUTO_INCREMENT PRIMARY KEY,
+	city VARCHAR(128) NOT NULL,
+	country_id INT UNSIGNED NOT NULL,
+	UNIQUE(city, country_id),
+	CONSTRAINT cities_country_id_fk FOREIGN KEY (country_id) REFERENCES countries(id)
+);
+
+
+
+CREATE TABLE IF NOT EXISTS media_types(
+	id INT UNSIGNED UNIQUE NOT NULL AUTO_INCREMENT PRIMARY KEY,
+	name VARCHAR(64) UNIQUE
+);
+
+
+CREATE TABLE IF NOT EXISTS media(
+	id SERIAL PRIMARY KEY,
+	user_id BIGINT UNSIGNED NOT NULL,
+	media_type_id INT UNSIGNED NOT NULL, 
+	file_path VARCHAR(512) UNIQUE NOT NULL,
+	file_size BIGINT UNSIGNED NOT NULL,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	CONSTRAINT media_user_id_fk FOREIGN KEY (user_id) REFERENCES users(id),
+	CONSTRAINT media_media_type_id FOREIGN KEY (media_type_id) REFERENCES media_types(id)
+);
+
+
+CREATE TABLE IF NOT EXISTS profiles(
+	id SERIAL PRIMARY KEY,
+	user_id BIGINT UNSIGNED UNIQUE NOT NULL,
+	city_id INT UNSIGNED,
+	about TEXT,
+	photo_id BIGINT UNSIGNED UNIQUE,
+	passport VARCHAR(16) UNIQUE,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	INDEX passport_idx(passport),
+	CONSTRAINT profiles_user_id_fk FOREIGN KEY (user_id) REFERENCES users(id),
+	CONSTRAINT profiles_city_id_fk FOREIGN KEY (city_id) REFERENCES cities(id),
+	CONSTRAINT profiles_photo_id_fk FOREIGN KEY (photo_id) REFERENCES media(id)
+);
+
+CREATE TABLE IF NOT EXISTS request_types
+(
+	id INT UNSIGNED UNIQUE AUTO_INCREMENT PRIMARY KEY,
+	name VARCHAR(128) UNIQUE NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS friend_requests(
+	from_user_id BIGINT UNSIGNED NOT NULL,
+	to_user_id BIGINT UNSIGNED NOT NULL,
+	request_type_id INT UNSIGNED NOT NULL,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	PRIMARY KEY(to_user_id, from_user_id),
+	CONSTRAINT fr_to_user_id FOREIGN KEY (to_user_id) REFERENCES users(id),
+	CONSTRAINT fr_from_user_id FOREIGN KEY (from_user_id) REFERENCES users(id),
+	CONSTRAINT fr_request_type_id FOREIGN KEY (request_type_id) REFERENCES request_types(id),
+	CONSTRAINT check_self_request CHECK (from_user_id != to_user_id)
+);
+
+CREATE TABLE IF NOT EXISTS communities(
+	id SERIAL PRIMARY KEY,
+	community_name VARCHAR(128) UNIQUE NOT NULL,
+	about TEXT,
+	admin_id BIGINT UNSIGNED NOT NULL,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	CONSTRAINT c_admin_id_fk FOREIGN KEY (admin_id) REFERENCES users(id)
+);
+
+
+CREATE TABLE IF NOT EXISTS communities_users(
+	community_id BIGINT UNSIGNED NOT NULL,
+	member_id  BIGINT UNSIGNED NOT NULL,
+	request_type_id INT UNSIGNED,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	PRIMARY KEY(community_id, member_id),
+	CONSTRAINT cu_community_id_fk FOREIGN KEY (community_id) REFERENCES communities(id),
+	CONSTRAINT cu_member_id_fk FOREIGN KEY (member_id) REFERENCES users(id),
+	CONSTRAINT cu_request_type_id FOREIGN KEY (request_type_id) REFERENCES request_types(id)
+);
+
+CREATE TABLE IF NOT EXISTS messages(
+	id SERIAL PRIMARY KEY,
+	from_user_id BIGINT UNSIGNED NOT NULL,
+	to_user_id BIGINT UNSIGNED NOT NULL,
+	message_txt TEXT NOT NULL,
+	is_delivered BOOL NOT NULL DEFAULT FALSE,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	CONSTRAINT messages_to_user_id_fk FOREIGN KEY (to_user_id) REFERENCES users(id),
+	CONSTRAINT messages_from_user_id_fk FOREIGN KEY (from_user_id) REFERENCES users(id)
+);
+
+CREATE TABLE posts (
+  id SERIAL PRIMARY KEY,
+  creator_id BIGINT UNSIGNED NOT NULL,
+  post_txt TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT posts_user_id_fk FOREIGN KEY (creator_id) REFERENCES users(id)
+);
+
+CREATE TABLE posts_likes (
+  post_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  like_type TINYINT NOT NULL DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (post_id,user_id),
+  CONSTRAINT pl_post_id_fk FOREIGN KEY (post_id) REFERENCES posts(id),
+  CONSTRAINT pl_user_id_fk FOREIGN KEY (user_id) REFERENCES users(id),
+  CONSTRAINT check_like_type CHECK (like_type IN (-1, 0, 1))
+);
